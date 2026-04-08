@@ -1,4 +1,7 @@
 import { AppError } from '../errors/AppError.js'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
 
 export type QdrantPayload = {
   text: string
@@ -25,7 +28,7 @@ export interface QdrantService {
 /**
  * Qdrant Vector Database Service
  * 
- * Install: npm install @qdrant/js-client
+ * Install: npm install @qdrant/js-client-rest
  * 
  * Environment variables:
  * - QDRANT_HOST: Qdrant server host (default: localhost)
@@ -40,15 +43,14 @@ export class DefaultQdrantService implements QdrantService {
   private readonly vectorSize!: number
 
   constructor(
-    host: string = 'localhost',
+    host: string = 'http://127.0.0.1:6333',
     port: number = 6333,
     collectionName: string = 'emails',
     vectorSize: number = 1536,
     apiKey?: string,
   ) {
     try {
-      const { QdrantClient } = require('@qdrant/js-client')
-
+      const { QdrantClient } = require('@qdrant/js-client-rest')
       ;(this as any).client = new QdrantClient({
         host,
         port,
@@ -59,7 +61,7 @@ export class DefaultQdrantService implements QdrantService {
       ;(this as any).vectorSize = vectorSize
     } catch (error) {
       throw new AppError(
-        'Qdrant client not properly initialized. Ensure @qdrant/js-client package is installed.',
+        'Qdrant client not properly initialized. Ensure @qdrant/js-client-rest is installed.',
         500,
         error,
       )
@@ -81,8 +83,26 @@ export class DefaultQdrantService implements QdrantService {
           },
         })
         console.log(`Created Qdrant collection: ${this.collectionName}`)
+        return
+      }
+
+      const collectionInfo = await this.client.getCollection(this.collectionName)
+      const configuredVectorSize = collectionInfo.config?.params?.vectors?.size
+
+      if (
+        typeof configuredVectorSize === 'number' &&
+        configuredVectorSize !== this.vectorSize
+      ) {
+        throw new AppError(
+          `Qdrant collection "${this.collectionName}" expects vectors of size ${configuredVectorSize}, but the app is configured to send size ${this.vectorSize}. Update QDRANT_VECTOR_SIZE or recreate the collection.`,
+          409,
+        )
       }
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error
+      }
+
       throw new AppError(
         'Failed to ensure Qdrant collection exists',
         502,
@@ -112,6 +132,10 @@ export class DefaultQdrantService implements QdrantService {
 
       console.log(`Upserted ${points.length} points to Qdrant`)
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error
+      }
+
       throw new AppError(
         'Failed to upsert points to Qdrant',
         502,

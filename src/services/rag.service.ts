@@ -14,9 +14,10 @@ export type RAGIndexingResult = {
 }
 
 export interface RAGService {
-  indexEmailMessage(messageId: string): Promise<RAGIndexingResult>
-  indexEmailThread(threadId: string): Promise<RAGIndexingResult>
-  searchSimilar(query: string, limit?: number): Promise<any[]>
+  indexEmailMessage(messageId: string): Promise<RAGIndexingResult>;
+  indexEmailThread(threadId: string): Promise<RAGIndexingResult>;
+  indexThreadFromData(thread: any): Promise<any>;
+  searchSimilar(query: string, limit?: number): Promise<any[]>;
 }
 
 type DefaultRAGServiceDependencies = {
@@ -162,6 +163,86 @@ export class DefaultRAGService implements RAGService {
     }
   }
 
+  async indexThreadFromData(thread: any): Promise<any> {
+    console.log(`Starting RAG indexing for thread from data: ${thread.id}`)
+    try {
+      console.log(`\n========== STEP 1: Starting RAG indexing for thread (from data): ${thread.id} ==========`)
+      console.log(`Thread contains ${thread.messages.length} messages`)
+
+      // Step 1: Prepare content from all messages in thread
+      console.log(`\n========== STEP 2: Preparing thread content for chunking ==========`)
+      const content = this.prepareThreadContent(thread)
+      console.log(`Thread content length: ${content.length} characters`)
+      console.log(`Content preview: ${content.substring(0, 200)}...`)
+
+      // Step 2: Create chunks from the content
+      console.log(`\n========== STEP 3: Creating text chunks ==========`)
+      const chunks = this.textChunkingService.chunkText(content, thread.id, 'thread')
+      console.log(`Created ${chunks.length} chunks from thread`)
+      chunks.forEach((chunk, idx) => {
+        console.log(`  Chunk ${idx + 1}: ${chunk.text.length} characters`)
+      })
+
+      if (chunks.length === 0) {
+        console.log(`No chunks created, returning early`)
+        return {
+          success: true,
+          sourceId: thread.id,
+          sourceType: 'thread',
+          chunksCreated: 0,
+          vectorsUpserted: 0,
+        }
+      }
+
+      // Step 3: Generate embeddings for all chunks
+      console.log(`\n========== STEP 4: Generating vector embeddings ==========`)
+      console.log(`Embedding ${chunks.length} chunks...`)
+      const embeddings = await this.embeddingsService.embedBatch(
+        chunks.map((chunk) => chunk.text),
+      )
+      console.log(`Generated ${embeddings.length} embeddings`)
+      console.log(`Embedding dimensions: ${embeddings[0]?.length || 0}`)
+
+      // Step 4: Prepare and upsert to Qdrant with payload
+      console.log(`\n========== STEP 5: Preparing Qdrant points with metadata ==========`)
+      const points = this.createQdrantPointsForThread(chunks, embeddings, thread)
+      console.log(`Prepared ${points.length} Qdrant points with metadata`)
+      points.forEach((point, idx) => {
+        console.log(`  Point ${idx + 1}: ID=${point.id}, TextLength=${point.payload.text?.length || 0}`)
+      })
+
+      // Step 5: Upsert to Qdrant
+      console.log(`\n========== STEP 6: Upserting vectors to Qdrant vector database ==========`)
+      await this.qdrantService.upsertPoints(points)
+      console.log(`Successfully upserted ${points.length} vectors to Qdrant`)
+
+      console.log(`\n========== THREAD INDEXING COMPLETED SUCCESSFULLY ==========\n`)
+
+      return {
+        success: true,
+        sourceId: thread.id,
+        sourceType: 'thread',
+        chunksCreated: chunks.length,
+        vectorsUpserted: points.length,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`\n========== ERROR DURING THREAD INDEXING ==========`)
+      console.error(`Error indexing thread ${thread.id}:`, errorMessage)
+      console.error(`Error stack:`, error instanceof Error ? error.stack : 'No stack trace')
+      console.error(`=================================================\n`)
+
+      return {
+        success: false,
+        sourceId: thread.id,
+        sourceType: 'thread',
+        chunksCreated: 0,
+        vectorsUpserted: 0,
+        error: errorMessage,
+      }
+    }
+  }
+
   async searchSimilar(query: string, limit: number = 10): Promise<any[]> {
     try {
       console.log(`Searching for similar content: "${query}"`)
@@ -293,7 +374,7 @@ export class DefaultRAGService implements RAGService {
   }
 
   private stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+    return html.replaceAll(/<[^>]*>/g, '').replaceAll(/&nbsp;/g, ' ').trim()
   }
 
   private calculateCosineSimilarity(a: EmbeddingVector, b: EmbeddingVector): number {
@@ -324,6 +405,13 @@ export class UnconfiguredRAGService implements RAGService {
   }
 
   async indexEmailThread(): Promise<RAGIndexingResult> {
+    throw new AppError(
+      'RAG service is not configured. Ensure all dependencies (Gmail, embeddings, Qdrant) are properly set up.',
+      503,
+    )
+  }
+
+  async indexThreadFromData(): Promise<RAGIndexingResult> {
     throw new AppError(
       'RAG service is not configured. Ensure all dependencies (Gmail, embeddings, Qdrant) are properly set up.',
       503,

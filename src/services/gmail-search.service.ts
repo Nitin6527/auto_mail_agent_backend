@@ -112,8 +112,8 @@ export class DefaultGmailSearchService implements GmailSearchService {
           query,
           count: 0,
           messages: [],
-          nextPageToken: listResponse.data.nextPageToken,
-          totalResults: listResponse.data.resultSizeEstimate,
+          nextPageToken: listResponse.data.nextPageToken ?? undefined,
+          totalResults: listResponse.data.resultSizeEstimate ?? undefined,
         }
       }
 
@@ -132,8 +132,8 @@ export class DefaultGmailSearchService implements GmailSearchService {
         query,
         count: messageResponses.length,
         messages: messageResponses.map((messageResponse) => toMessageSummary(messageResponse.data)),
-        nextPageToken: listResponse.data.nextPageToken,
-        totalResults: listResponse.data.resultSizeEstimate,
+        nextPageToken: listResponse.data.nextPageToken ?? undefined,
+        totalResults: listResponse.data.resultSizeEstimate ?? undefined,
       }
     } catch (error) {
       console.log("error",error)

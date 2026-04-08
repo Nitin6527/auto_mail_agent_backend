@@ -8,14 +8,10 @@ import {
 import { DefaultHealthService } from '../services/health.service.js'
 import { DefaultTextChunkingService } from '../services/text-chunking.service.js'
 import {
-  OpenAIEmbeddingsService,
-  GoogleEmbeddingsService,
-  LocalEmbeddingsService,
-  UnconfiguredEmbeddingsService,
+  createEmbeddingsService,
 } from '../services/embeddings.service.js'
 import {
   DefaultQdrantService,
-  UnconfiguredQdrantService,
 } from '../services/qdrant.service.js'
 import { DefaultRAGService, UnconfiguredRAGService } from '../services/rag.service.js'
 import { RAGController } from '../controllers/rag.controller.js'
@@ -37,30 +33,10 @@ export const buildApiRouter = () => {
       })
     : new UnconfiguredGmailSearchService()
 
-  apiRouter.use(
-    '/gmail',
-    buildGmailRouter({
-      gmailSearchService,
-    }),
-  )
-
-  // RAG Router
+  // Create RAG service early so we can pass it to gmail router
+  let ragService
   if (hasRAGConfig) {
-    // Create embeddings service based on configuration
-    let embeddingsService
-    switch (env.EMBEDDINGS_PROVIDER) {
-      case 'openai':
-        embeddingsService = new OpenAIEmbeddingsService(env.OPENAI_API_KEY!)
-        break
-      case 'google':
-        embeddingsService = new GoogleEmbeddingsService(env.GOOGLE_API_KEY!)
-        break
-      case 'local':
-        embeddingsService = new LocalEmbeddingsService()
-        break
-      default:
-        embeddingsService = new UnconfiguredEmbeddingsService()
-    }
+    const embeddingsService = createEmbeddingsService()
 
     const qdrantService = new DefaultQdrantService(
       env.QDRANT_HOST,
@@ -70,22 +46,27 @@ export const buildApiRouter = () => {
       env.QDRANT_API_KEY,
     )
 
-    const ragService = new DefaultRAGService({
+    ragService = new DefaultRAGService({
       gmailSearchService,
       textChunkingService: new DefaultTextChunkingService(),
       embeddingsService,
       qdrantService,
     })
-
-    const ragController = new RAGController({ ragService })
-
-    apiRouter.use('/rag', createRAGRouter(ragController))
   } else {
-    // Create unconfigured RAG service
-    const ragService = new UnconfiguredRAGService()
-    const ragController = new RAGController({ ragService })
-    apiRouter.use('/rag', createRAGRouter(ragController))
+    ragService = new UnconfiguredRAGService()
   }
+
+  apiRouter.use(
+    '/gmail',
+    buildGmailRouter({
+      gmailSearchService,
+      ragService,
+    }),
+  )
+
+  // RAG Router
+  const ragController = new RAGController({ ragService })
+  apiRouter.use('/rag', createRAGRouter(ragController))
 
   return apiRouter
 }
