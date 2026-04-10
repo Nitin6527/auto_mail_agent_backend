@@ -10,6 +10,9 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.66",
+    "@langchain/langgraph": "^0.2.74",
+    "@langchain/textsplitters": "^0.1.0",
     "@huggingface/transformers": "^3.8.1",
     "@qdrant/js-client-rest": "^1.17.0",
     "cors": "^2.8.5",

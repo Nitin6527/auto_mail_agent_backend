@@ -18,11 +18,23 @@ export type QdrantPoint = {
   payload: QdrantPayload
 }
 
+export type QdrantPayloadFilter = {
+  must?: Array<{
+    key: string
+    match: {
+      value?: string | number | boolean
+      text?: string
+    }
+  }>
+}
+
 export interface QdrantService {
   upsertPoint(point: QdrantPoint): Promise<void>
   upsertPoints(points: QdrantPoint[]): Promise<void>
-  search(vector: number[], limit: number): Promise<QdrantPoint[]>
+  search(vector: number[], limit: number, filter?: QdrantPayloadFilter): Promise<QdrantPoint[]>
   deletePoints(pointIds: (string | number)[]): Promise<void>
+  getPointsBySourceId(sourceId: string, limit?: number): Promise<QdrantPoint[]>
+  deletePointsBySourceId(sourceId: string): Promise<void>
 }
 
 /**
@@ -144,13 +156,18 @@ export class DefaultQdrantService implements QdrantService {
     }
   }
 
-  async search(vector: number[], limit: number = 10): Promise<QdrantPoint[]> {
+  async search(
+    vector: number[],
+    limit: number = 10,
+    filter?: QdrantPayloadFilter,
+  ): Promise<QdrantPoint[]> {
     try {
       await this.ensureCollectionExists()
 
       const results = await this.client.search(this.collectionName, {
         vector,
         limit,
+        ...(filter && { filter }),
         with_payload: true,
         with_vectors: true,
       })
@@ -171,14 +188,14 @@ export class DefaultQdrantService implements QdrantService {
 
   async deletePoints(pointIds: (string | number)[]): Promise<void> {
     try {
+      await this.ensureCollectionExists()
+
       const numericIds = pointIds.map((id) =>
         typeof id === 'string' ? this.hashStringToNumber(id) : id,
       )
 
       await this.client.delete(this.collectionName, {
-        points_selector: {
-          points: numericIds,
-        },
+        points: numericIds,
       })
 
       console.log(`Deleted ${pointIds.length} points from Qdrant`)
@@ -188,6 +205,63 @@ export class DefaultQdrantService implements QdrantService {
         502,
         error instanceof Error ? error.message : error,
       )
+    }
+  }
+
+  async getPointsBySourceId(sourceId: string, limit: number = 100): Promise<QdrantPoint[]> {
+    try {
+      await this.ensureCollectionExists()
+
+      const results = await this.client.scroll(this.collectionName, {
+        filter: this.createSourceIdFilter(sourceId),
+        limit,
+        with_payload: true,
+        with_vector: true,
+      })
+
+      return (results.points ?? []).map((result: any) => ({
+        id: result.id,
+        vector: result.vector || [],
+        payload: result.payload,
+      }))
+    } catch (error) {
+      throw new AppError(
+        'Failed to get points from Qdrant by sourceId',
+        502,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+
+  async deletePointsBySourceId(sourceId: string): Promise<void> {
+    try {
+      await this.ensureCollectionExists()
+
+      await this.client.delete(this.collectionName, {
+        filter: this.createSourceIdFilter(sourceId),
+        wait: true,
+      })
+
+      console.log(`Deleted existing points for sourceId ${sourceId} from Qdrant`)
+    } catch (error) {
+      throw new AppError(
+        'Failed to delete points from Qdrant by sourceId',
+        502,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+
+  private createSourceIdFilter(sourceId: string): QdrantPayloadFilter {
+    return {
+      must: [
+        {
+          key: 'sourceId',
+          match: {
+            value: sourceId,
+          },
+        },
+      ],
     }
   }
 
@@ -231,6 +305,14 @@ export class UnconfiguredQdrantService implements QdrantService {
   }
 
   async deletePoints(): Promise<void> {
+    this.throwConfigError()
+  }
+
+  async getPointsBySourceId(): Promise<QdrantPoint[]> {
+    this.throwConfigError()
+  }
+
+  async deletePointsBySourceId(): Promise<void> {
     this.throwConfigError()
   }
 }

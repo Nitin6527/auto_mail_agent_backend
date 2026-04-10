@@ -70,7 +70,7 @@ export class RAGController {
 
   search = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { q, limit } = req.query
+      const { q, limit, threadId, messageId, participantEmail } = req.query
 
       if (!q || typeof q !== 'string') {
         res.status(400).json({ error: 'Query parameter "q" is required and must be a string' })
@@ -83,11 +83,20 @@ export class RAGController {
         return
       }
 
-      const results = await this.ragService.searchSimilar(q, limitNumber)
+      const results = await this.ragService.searchSimilar(q, limitNumber, {
+        threadId: typeof threadId === 'string' ? threadId : undefined,
+        messageId: typeof messageId === 'string' ? messageId : undefined,
+        participantEmail: typeof participantEmail === 'string' ? participantEmail : undefined,
+      })
 
       res.status(200).json({
         query: q,
         limit: limitNumber,
+        filters: {
+          threadId: typeof threadId === 'string' ? threadId : undefined,
+          messageId: typeof messageId === 'string' ? messageId : undefined,
+          participantEmail: typeof participantEmail === 'string' ? participantEmail : undefined,
+        },
         count: results.length,
         results,
       })

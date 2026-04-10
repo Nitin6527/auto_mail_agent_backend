@@ -1,8 +1,8 @@
 import { gmail_v1 } from 'googleapis'
 import { AppError } from '../errors/AppError.js'
 
-type GmailSearchInput = {
-  query: string
+export type GmailSearchInput = {
+  query?: string
   maxResults?: number
   pageToken?: string
 }
@@ -95,7 +95,7 @@ export class DefaultGmailSearchService implements GmailSearchService {
     this.gmailClient = gmailClient
   }
 
-  async search({ query, maxResults = 10, pageToken }: GmailSearchInput): Promise<GmailSearchResult> {
+  async search({ query, maxResults = 10, pageToken }: GmailSearchInput = {}): Promise<GmailSearchResult> {
     try {
       console.log("query", query);
       const listResponse = await this.gmailClient.users.messages.list({
@@ -109,7 +109,7 @@ export class DefaultGmailSearchService implements GmailSearchService {
 
       if (messages.length === 0) {
         return {
-          query,
+          query: query ?? '',
           count: 0,
           messages: [],
           nextPageToken: listResponse.data.nextPageToken ?? undefined,
@@ -129,7 +129,7 @@ export class DefaultGmailSearchService implements GmailSearchService {
       )
 
       return {
-        query,
+        query: query ?? '',
         count: messageResponses.length,
         messages: messageResponses.map((messageResponse) => toMessageSummary(messageResponse.data)),
         nextPageToken: listResponse.data.nextPageToken ?? undefined,

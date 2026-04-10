@@ -15,13 +15,12 @@ export const buildGmailRouter = ({
 }: BuildGmailRouterOptions) => {
   const gmailRouter = Router()
 
-  gmailRouter.post('/search', searchGmailController({ gmailSearchService }))
+  gmailRouter.post('/search', searchGmailController({ gmailSearchService, ragService }))
   gmailRouter.get('/message/:messageId', getMessageDetailController({ gmailSearchService }))
   gmailRouter.get(
     '/thread/:threadId',
     getThreadDetailController({
-      gmailSearchService,
-      ragService,
+      gmailSearchService
     }),
   )
 

@@ -6,7 +6,6 @@ import {
   UnconfiguredGmailSearchService,
 } from '../services/gmail-search.service.js'
 import { DefaultHealthService } from '../services/health.service.js'
-import { DefaultTextChunkingService } from '../services/text-chunking.service.js'
 import {
   createEmbeddingsService,
 } from '../services/embeddings.service.js'
@@ -48,7 +47,6 @@ export const buildApiRouter = () => {
 
     ragService = new DefaultRAGService({
       gmailSearchService,
-      textChunkingService: new DefaultTextChunkingService(),
       embeddingsService,
       qdrantService,
     })
